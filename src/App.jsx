@@ -9,7 +9,6 @@ import { Coupons } from './pages/Coupons';
 import { Sales } from './pages/Sales';
 import { SalesLog } from './pages/SalesLog';
 import { CashCollection } from './pages/CashCollection';
-import { Reports } from './pages/Reports';
 import { Wallets } from './pages/Wallets';
 import { Ledger } from './pages/Ledger';
 import { Users } from './pages/Users';
@@ -17,6 +16,7 @@ import { AuditLogs } from './pages/AuditLogs';
 import { Settings } from './pages/Settings';
 import { ApiConsole } from './pages/ApiConsole';
 import { CashInHand } from './pages/CashInHand';
+import { SalesAnalytics } from './pages/SalesAnalytics';
 import { 
   Bell, 
   Moon, 
@@ -82,8 +82,6 @@ export const App = () => {
         return <SalesLog />;
       case 'collections':
         return <CashCollection />;
-      case 'reports':
-        return <Reports />;
       case 'wallets':
         return <Wallets />;
       case 'ledger':
@@ -98,6 +96,8 @@ export const App = () => {
         return <ApiConsole />;
       case 'cashinhand':
         return <CashInHand />;
+      case 'salesanalytics':
+        return <SalesAnalytics />;
       default:
         return <Dashboard setActivePage={setActivePage} />;
     }
