@@ -413,7 +413,29 @@ export const Dashboard = ({ setActivePage }) => {
   // ═══════════════════════════════════════════
   const renderOwnerDashboard = () => {
     const ownerSiteIds = db.userSites.filter(us => us.userId === currentUser.id).map(us => us.siteId);
-    const ownerSoldCoupons = db.coupons.filter(c => c.status === 'Sold' && ownerSiteIds.includes(c.siteId));
+
+    // Respect selected site filter
+    const ownerSoldCoupons = db.coupons.filter(c =>
+      c.status === 'Sold' &&
+      ownerSiteIds.includes(c.siteId) &&
+      (selectedSiteId === 'all' || c.siteId === selectedSiteId)
+    );
+
+    const ownerTotalRevenue = ownerSoldCoupons.reduce((sum, c) => sum + (Number(c.salePrice) || 0), 0);
+
+    // Today's sales
+    const ownerTodaySales = ownerSoldCoupons.filter(c => new Date(c.soldAt).toDateString() === today);
+    const ownerTodayRevenue = ownerTodaySales.reduce((sum, c) => sum + (Number(c.salePrice) || 0), 0);
+
+    // This month's sales
+    const now = new Date();
+    const ownerMonthSales = ownerSoldCoupons.filter(c => {
+      const d = new Date(c.soldAt);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+    const ownerMonthRevenue = ownerMonthSales.reduce((sum, c) => sum + (Number(c.salePrice) || 0), 0);
+
+    const siteLabelSuffix = selectedSiteId === 'all' ? 'all sites' : (db.sites.find(s => s.id === selectedSiteId)?.name || 'selected site');
 
     return (
       <>
@@ -425,9 +447,9 @@ export const Dashboard = ({ setActivePage }) => {
         </div>
 
         <div className="metrics-grid">
-          <StatCard label="Assigned Site Revenue" value={`${totalRevenue} AED`} sub="Gross sales amount" icon={DollarSign} color="var(--green)" bg="var(--green-light)" />
-          <StatCard label="Total Stock Cost" value={`${totalCost} AED`} sub="Cost price of sold coupons" icon={Ticket} color="var(--blue)" bg="var(--blue-light)" />
-          <StatCard label="Net Profit Margin" value={`${totalProfit} AED`} sub={`${((totalProfit/totalRevenue)*100 || 0).toFixed(1)}% margin`} icon={Percent} color="var(--purple)" bg="var(--purple-light)" />
+          <StatCard label="Total Revenue" value={`${ownerTotalRevenue} AED`} sub={`Gross sales — ${siteLabelSuffix}`} icon={DollarSign} color="var(--green)" bg="var(--green-light)" />
+          <StatCard label="Today's Sales" value={`${ownerTodayRevenue} AED`} sub={`${ownerTodaySales.length} coupon${ownerTodaySales.length !== 1 ? 's' : ''} sold today`} icon={TrendingUp} color="var(--blue)" bg="var(--blue-light)" />
+          <StatCard label="This Month's Sales" value={`${ownerMonthRevenue} AED`} sub={`${ownerMonthSales.length} coupon${ownerMonthSales.length !== 1 ? 's' : ''} sold this month`} icon={ArrowUpRight} color="var(--purple)" bg="var(--purple-light)" />
           <StatCard label="Pending Collections" value={`${totalPendingCollection} AED`} sub="Cash sitting in staff wallets" icon={Wallet} color="var(--yellow)" bg="var(--yellow-light)" />
         </div>
 
@@ -442,8 +464,8 @@ export const Dashboard = ({ setActivePage }) => {
           <div className="ui-card-body">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
               {db.couponProfiles.map(p => {
-                const count = coupons.filter(c => c.profileId === p.id && c.status === 'Sold').length;
-                const rev = count * p.salePrice;
+                const count = ownerSoldCoupons.filter(c => c.profileId === p.id).length;
+                const rev = ownerSoldCoupons.filter(c => c.profileId === p.id).reduce((sum, c) => sum + (Number(c.salePrice) || 0), 0);
                 return (
                   <div key={p.id} style={{ padding: '1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontWeight: 600 }}>{p.name}</div>

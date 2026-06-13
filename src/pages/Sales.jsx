@@ -357,6 +357,10 @@ export const Sales = () => {
 
         {/* Success modal */}
         {successModalOpen && (() => {
+          // Check if SMS is enabled for this site from the DB site record
+          const currentSite = db.sites.find(s => s.id === selectedSiteId);
+          const smsEnabledForSite = currentSite ? currentSite.smsEnabled !== false : true;
+
           const smsConfigured = db.settings?.smsProvider &&
             (db.settings.smsProvider === 'twilio'
               ? db.settings.twilioAccountSid && db.settings.twilioAuthToken && db.settings.twilioFromNumber
@@ -401,7 +405,8 @@ export const Sales = () => {
                     <strong className="td-monospaced" style={{ fontSize: '1.6rem', color: 'var(--text)', fontWeight: 800 }}>{soldCouponCode}</strong>
                   </div>
 
-                  {/* SMS section */}
+                  {/* SMS section — only if SMS is enabled for this site */}
+                  {smsEnabledForSite && (
                   <div style={{
                     background: smsSent ? 'var(--green-light)' : 'var(--surface-2)',
                     border: `1px solid ${smsSent ? 'var(--green)' : 'var(--border)'}`,
@@ -475,6 +480,7 @@ export const Sales = () => {
                       </p>
                     )}
                   </div>
+                  )}
 
                   <button type="button" className="action-btn btn-brand-blue" style={{ width: '100%' }} onClick={() => setSuccessModalOpen(false)}>
                     Close &amp; Continue

@@ -450,6 +450,15 @@ export const AppProvider = ({ children }) => {
     } catch (e) { showToast(`Error: ${e.message}`); }
   };
 
+  const updateSiteSmsEnabled = async (siteId, enabled) => {
+    if (!currentUser) return;
+    try {
+      await mockDb.updateSiteSmsEnabled(siteId, enabled, currentUser.id);
+      await refreshDbState();
+      showToast(`SMS ${enabled ? 'enabled' : 'disabled'} for site`);
+    } catch (e) { showToast(`Error: ${e.message}`); }
+  };
+
   return (
     <AppContext.Provider value={{
       db: dbState, currentUser, appLoading: loading, refreshDbState, loginUser, logoutUser,
@@ -463,7 +472,7 @@ export const AppProvider = ({ children }) => {
       reverseTransaction, importCoupons, addSite, addCouponProfile, addUser,
       deleteUser, unlinkUserFromSite, linkUserToSite, deleteSite, deleteCoupon,
       deleteCouponProfile, bulkDeleteCoupons,
-      walletAdjustment, updateSettings
+      walletAdjustment, updateSettings, updateSiteSmsEnabled
     }}>
       {children}
     </AppContext.Provider>

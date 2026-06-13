@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 const uid = () => 'id-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
 const txid = () => 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
 
-const mapSite = (r) => r ? ({ id: r.id, name: r.name, location: r.location, status: r.status }) : null;
+const mapSite = (r) => r ? ({ id: r.id, name: r.name, location: r.location, status: r.status, smsEnabled: r.sms_enabled !== false }) : null;
 const mapProfile = (r) => r ? ({ id: r.id, name: r.name, validityDays: r.validity_days, price: r.price, salePrice: r.sale_price, costPrice: r.cost_price, description: r.description, status: r.status }) : null;
 const mapUser = (r) => r ? ({ id: r.id, username: r.username, password: r.password, role: r.role, name: r.name, twoFAEnabled: r.two_fa_enabled }) : null;
 const mapUserSite = (r) => r ? ({ userId: r.user_id, siteId: r.site_id }) : null;
@@ -79,6 +79,12 @@ export const addSite = async (name, location, currentUserId) => {
   const { error } = await supabase.from('sites').insert({ id, name, location, status: 'Active' });
   if (error) throw new Error(error.message);
   await logAction(currentUserId, 'SITE_CREATION', 'Created site ' + name);
+};
+
+export const updateSiteSmsEnabled = async (siteId, enabled, currentUserId) => {
+  const { error } = await supabase.from('sites').update({ sms_enabled: enabled }).eq('id', siteId);
+  if (error) throw new Error(error.message);
+  await logAction(currentUserId, 'SITE_SMS_TOGGLE', `SMS ${enabled ? 'enabled' : 'disabled'} for site ${siteId}`);
 };
 
 export const deleteSite = async (siteId, currentUserId) => {

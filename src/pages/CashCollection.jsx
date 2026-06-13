@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { Plus, DollarSign, Users } from 'lucide-react';
+import { Plus, DollarSign, Users, Loader2 } from 'lucide-react';
 
 // FIX 5: Full role-based cash collection hierarchy
 // Super Staff  → collect from Staff
@@ -56,6 +56,10 @@ export const CashCollection = () => {
   const [targetUserId, setTargetUserId] = useState('');
   const [collectAmount, setCollectAmount] = useState('');
   const [collectRemarks, setCollectRemarks] = useState('');
+
+  // Double-submit guard — ref blocks re-entry immediately, state updates UI
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
 
   // Accountant / Super Staff splits (for Super Staff source)
   const [splits, setSplits] = useState([]);
@@ -120,11 +124,17 @@ export const CashCollection = () => {
 
   const handleCollect = async (e) => {
     e.preventDefault();
+    // ref check blocks re-entry immediately (before React re-render)
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setIsSubmitting(true);
 
     const amt = Number(collectAmount);
 
     if (!targetUserId || isNaN(amt) || amt <= 0) {
       showToast('Select a user and enter a valid amount');
+      submitInFlightRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -149,6 +159,9 @@ export const CashCollection = () => {
       setSplits(db.sites.map(s => ({ siteId: s.id, amount: '' })));
     } catch (err) {
       console.error(err);
+    } finally {
+      submitInFlightRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -262,8 +275,10 @@ export const CashCollection = () => {
                 />
               </div>
 
-              <button type="submit" className="action-btn btn-brand-blue" style={{ marginTop: '0.5rem' }}>
-                <DollarSign size={14} /> Collect & Log
+              <button type="submit" className="action-btn btn-brand-blue" style={{ marginTop: '0.5rem' }} disabled={isSubmitting}>
+                {isSubmitting
+                  ? <><Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Processing…</>
+                  : <><DollarSign size={14} /> Collect & Log</>}
               </button>
             </form>
           </div>

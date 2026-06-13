@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Building2, Plus, MapPin, Users, CheckCircle2, UserPlus, Trash2, Layers } from 'lucide-react';
+import { Building2, Plus, MapPin, Users, CheckCircle2, UserPlus, Trash2, Layers, MessageSquare } from 'lucide-react';
 
 export const Sites = () => {
-  const { db, currentUser, addSite, addUser, unlinkUserFromSite, updateSitePrice, deleteSite, assignProfileToSite, unassignProfileFromSite, showToast } = useApp();
+  const { db, currentUser, addSite, addUser, unlinkUserFromSite, updateSitePrice, deleteSite, assignProfileToSite, unassignProfileFromSite, updateSiteSmsEnabled, showToast } = useApp();
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteLoc, setNewSiteLoc] = useState('');
   const [confirmDeleteSiteId, setConfirmDeleteSiteId] = useState(null);
-  
+
   // User assignment form states
   const [targetUserId, setTargetUserId] = useState('');
   const [targetSiteId, setTargetSiteId] = useState('');
@@ -184,6 +184,34 @@ export const Sites = () => {
                   <MapPin size={12} />
                   <span>{site.location}</span>
                 </div>
+
+                {/* SMS toggle — Admin only */}
+                {currentUser.role === 'Admin' && (
+                  <div className="flex-align-items-center flex-justify-space-between" style={{ background: 'var(--surface-2)', borderRadius: 'var(--radius)', padding: '0.55rem 0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="flex-align-items-center" style={{ gap: '0.4rem' }}>
+                      <MessageSquare size={13} style={{ color: site.smsEnabled ? 'var(--green)' : 'var(--text-3)' }} />
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>SMS after sale</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+                      <span style={{ fontSize: '0.72rem', color: site.smsEnabled ? 'var(--green)' : 'var(--text-3)', fontWeight: 600 }}>
+                        {site.smsEnabled ? 'On' : 'Off'}
+                      </span>
+                      <div
+                        onClick={() => updateSiteSmsEnabled(site.id, !site.smsEnabled)}
+                        style={{
+                          width: 36, height: 20, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s',
+                          background: site.smsEnabled ? 'var(--green)' : 'var(--border)',
+                          position: 'relative', flexShrink: 0,
+                        }}
+                      >
+                        <div style={{
+                          position: 'absolute', top: 3, left: site.smsEnabled ? 19 : 3,
+                          width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
+                        }} />
+                      </div>
+                    </label>
+                  </div>
+                )}
 
                 <div className="ui-section-divider" style={{ margin: '0.5rem 0' }} />
 
