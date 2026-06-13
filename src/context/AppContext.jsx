@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import * as mockDb from '../db/mockDb';
 
 const AppContext = createContext();
@@ -183,6 +183,72 @@ export const AppProvider = ({ children }) => {
 
     setNotifications([...lowStockAlerts, ...filteredLogs]);
   }, [dbState, currentUser]);
+
+  // ── Telegram low-stock auto-alerts ────────────────────────────────────────
+  // Sends exactly 2 messages per site+profile per stock cycle:
+  //   Message 1 → when stock drops below threshold  (e.g. below 5)
+  //   Message 2 → when stock hits zero
+  // Once stock is refilled above threshold the cycle resets,
+  // so the same 2 messages will fire again if it drops low again.
+  const telegramAlertState = useRef({});
+  // structure: { [siteId-profId]: { sentLow: bool, sentZero: bool } }
+
+  useEffect(() => {
+    const webhookUrl = dbState.settings?.telegramWebhookUrl;
+    if (!webhookUrl) return;
+
+    const threshold = dbState.settings?.lowStockThreshold || 5;
+
+    const sendTelegram = (text) => {
+      const url = webhookUrl.includes('?')
+        ? `${webhookUrl}&text=${encodeURIComponent(text)}&parse_mode=Markdown`
+        : `${webhookUrl}?text=${encodeURIComponent(text)}&parse_mode=Markdown`;
+      fetch(url).catch(() => {});
+    };
+
+    dbState.sites.forEach(site => {
+      dbState.couponProfiles.forEach(prof => {
+        const remaining = dbState.coupons.filter(
+          c => c.profileId === prof.id && c.siteId === site.id &&
+               (c.status === 'Assigned' || c.status === 'Available')
+        ).length;
+
+        const key = `${site.id}-${prof.id}`;
+        const state = telegramAlertState.current[key] || { sentLow: false, sentZero: false };
+
+        // ── Reset cycle when stock is refilled above threshold ──
+        if (remaining >= threshold) {
+          telegramAlertState.current[key] = { sentLow: false, sentZero: false };
+          return;
+        }
+
+        // ── Message 2: hit zero ──
+        if (remaining === 0 && !state.sentZero) {
+          telegramAlertState.current[key] = { ...state, sentZero: true };
+          sendTelegram(
+            `🚨 *Out of Stock!*\n\n` +
+            `📍 Site: *${site.name}*\n` +
+            `📦 Profile: *${prof.name}*\n` +
+            `🎟 Remaining: *0 coupons*\n\n` +
+            `Stock is completely empty. Please add coupons immediately.`
+          );
+          return;
+        }
+
+        // ── Message 1: dropped below threshold ──
+        if (remaining > 0 && remaining < threshold && !state.sentLow) {
+          telegramAlertState.current[key] = { ...state, sentLow: true };
+          sendTelegram(
+            `⚠️ *Low Coupon Stock Alert*\n\n` +
+            `📍 Site: *${site.name}*\n` +
+            `📦 Profile: *${prof.name}*\n` +
+            `🎟 Remaining: *${remaining} coupon${remaining === 1 ? '' : 's'}*\n\n` +
+            `Stock is below the threshold of ${threshold}. Please add more coupons soon.`
+          );
+        }
+      });
+    });
+  }, [dbState]);
 
   const getAccessibleSites = () => {
     if (!currentUser) return [];
