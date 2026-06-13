@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Receipt, Search, Filter, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Receipt, Search, Filter, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sales Log — dedicated page with full search, filter & pagination
@@ -120,7 +120,8 @@ export const SalesLog = () => {
     return db.users.filter(u => visibleSellerIds.includes(u.id));
   }, [db, visibleSellerIds]);
 
-  const showRevenue = role !== 'Staff' && role !== 'Super Staff';
+  const showRevenue  = role !== 'Staff' && role !== 'Super Staff';
+  const canExportCSV = role === 'Manager' || role === 'Owner';
   const hasActiveFilters = filterSiteId !== 'all' || filterProfile !== 'all' ||
     filterSeller !== 'all' || dateFrom || dateTo || search.trim();
 
@@ -161,13 +162,50 @@ export const SalesLog = () => {
   const pageBtnStyle = (active) => ({
     minWidth: '32px', height: '32px', padding: '0 0.4rem',
     borderRadius: '4px', border: '1px solid var(--border)',
-    background: active ? 'var(--brand-blue)' : 'var(--surface-2)',
+    background: active ? 'var(--blue)' : 'var(--surface-2)',
     color: active ? '#fff' : 'var(--text-2)',
     fontWeight: active ? 700 : 400, fontSize: '0.78rem',
     cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   });
 
-  const colSpan = 5 + (dropdownSites.length > 1 ? 1 : 0) + 1; // price+name+mobile+code+profile + site? + seller
+  const colSpan = 5 + (dropdownSites.length > 1 ? 1 : 0) + 1;
+
+  // CSV Export — exports ALL filtered rows (not just current page)
+  const handleExportCSV = () => {
+    if (filtered.length === 0) return;
+
+    const headers = ['#', 'Coupon Code', 'Profile'];
+    if (dropdownSites.length > 1) headers.push('Site');
+    headers.push('Sold By', 'Role');
+    if (showRevenue) headers.push('Price (AED)');
+    headers.push('Customer Name', 'Mobile', 'Date & Time');
+
+    const rows = filtered.map((log, idx) => {
+      const profile = db.couponProfiles.find(p => p.id === log.profileId);
+      const site    = db.sites.find(s => s.id === log.siteId);
+      const seller  = db.users.find(u => u.id === log.soldByUserId);
+      const row = [idx + 1, log.code || '', profile?.name || log.profileId || ''];
+      if (dropdownSites.length > 1) row.push(site?.name || '');
+      row.push(seller?.name || '', seller?.role || '');
+      if (showRevenue) row.push(log.salePrice ?? '');
+      row.push(log.customerName || '', log.customerPhone || '',
+        log.soldAt ? new Date(log.soldAt).toLocaleString() : '');
+      return row;
+    });
+
+    const csv = [headers, ...rows]
+      .map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'sales_log_' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div>
@@ -177,6 +215,19 @@ export const SalesLog = () => {
           <h1 className="page-title-main">{pageTitle}</h1>
           <p className="page-subtitle">{pageSubtitle}</p>
         </div>
+        {canExportCSV && (
+          <button
+            onClick={handleExportCSV}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              padding: '0.45rem 0.9rem', fontSize: '0.8rem', borderRadius: '6px',
+              border: '1px solid var(--blue)', background: 'var(--blue)',
+              color: '#fff', cursor: 'pointer', fontWeight: 600,
+            }}
+          >
+            <Download size={14} /> Export CSV{filtered.length > 0 ? ` (${filtered.length})` : ''}
+          </button>
+        )}
       </div>
 
       {/* ── Filter bar ── */}
@@ -265,7 +316,7 @@ export const SalesLog = () => {
             </span>
           )}
           {hasActiveFilters && (
-            <span style={{ fontSize: '0.72rem', color: 'var(--brand-blue)', fontWeight: 600 }}>Filters active</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--blue)', fontWeight: 600 }}>Filters active</span>
           )}
         </div>
       </div>

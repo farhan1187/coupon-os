@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { ShoppingCart, Search, CheckCircle2, Loader2, Receipt, BarChart2, Calendar, TrendingUp, MessageSquare, CheckCheck } from 'lucide-react';
+import { ShoppingCart, Search, CheckCircle2, Loader2, Receipt, MessageSquare, CheckCheck } from 'lucide-react';
 import { sendCouponSms, normalisePhone, isAllowedForProvider } from '../utils/smsService';
+import { SalesAnalyticsPanel } from '../components/SalesAnalyticsPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Role visibility matrix for sold coupon list
@@ -61,11 +62,6 @@ export const Sales = () => {
 
   // Sales-log search (code, name, mobile)
   const [logSearch, setLogSearch] = useState('');
-
-  // ── Analytics date filter state ───────────────────────────────────────────
-  const [dateMode, setDateMode]     = useState('today');   // 'today' | 'month' | 'custom'
-  const [customFrom, setCustomFrom] = useState(todayStr());
-  const [customTo, setCustomTo]     = useState(todayStr());
 
   if (!currentUser) return null;
 
@@ -159,262 +155,7 @@ export const Sales = () => {
 
   const salesLogs = showLog ? getSalesLogs() : [];
 
-  // ── Analytics helpers ─────────────────────────────────────────────────────
-  const getAnalyticsRange = () => {
-    if (dateMode === 'today') return { from: todayStr(), to: todayStr() };
-    if (dateMode === 'month') return { from: thisMonthStart(), to: todayStr() };
-    return { from: customFrom, to: customTo };
-  };
-
-  const renderAnalyticsPanel = () => {
-    if (!showAnalytics) return null;
-
-    const { from, to } = getAnalyticsRange();
-
-    // Determine which sites this user can see
-    let visibleSiteIds;
-    if (role === 'Admin' || role === 'Accountant') {
-      visibleSiteIds = db.sites.map(s => s.id);
-    } else {
-      visibleSiteIds = db.userSites.filter(us => us.userId === currentUser.id).map(us => us.siteId);
-    }
-
-    // Build per-site stats
-    const siteStats = visibleSiteIds.map(siteId => {
-      const site = db.sites.find(s => s.id === siteId);
-      let sold = db.coupons.filter(c => c.status === 'Sold' && c.siteId === siteId);
-
-      // Include optimistic pending sale for this site
-      if (pendingSale && pendingSale.siteId === siteId && !sold.find(c => c.code === pendingSale.code)) {
-        sold = [pendingSale, ...sold];
-      }
-
-      // Apply date range
-      const filtered = sold.filter(c => isInRange(c.soldAt, from, to));
-
-      // Per-profile breakdown
-      const profileMap = {};
-      filtered.forEach(c => {
-        profileMap[c.profileId] = (profileMap[c.profileId] || 0) + 1;
-      });
-
-      // Per-seller breakdown
-      const sellerMap = {};
-      filtered.forEach(c => {
-        const sid = c.soldByUserId;
-        if (!sellerMap[sid]) sellerMap[sid] = 0;
-        sellerMap[sid] += 1;
-      });
-
-      const revenue = filtered.reduce((s, c) => s + (Number(c.salePrice) || 0), 0);
-
-      return { siteId, site, count: filtered.length, revenue, profileMap, sellerMap };
-    });
-
-    const totalCount   = siteStats.reduce((s, x) => s + x.count, 0);
-    const totalRevenue = siteStats.reduce((s, x) => s + x.revenue, 0);
-    const activeSites  = siteStats.filter(x => x.count > 0).length;
-
-    const rangeLabel = dateMode === 'today' ? 'Today'
-      : dateMode === 'month' ? 'This Month'
-      : `${from} → ${to}`;
-
-    const summaryCardStyle = {
-      background: 'var(--surface)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: '1rem 1.25rem',
-      flex: 1,
-      minWidth: '150px',
-    };
-
-    return (
-      <>
-        {/* ── Header card with date controls ── */}
-        <div className="ui-card" style={{ marginBottom: '1.25rem' }}>
-          <div className="ui-card-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <BarChart2 size={14} />
-              <span className="ui-card-title">Sales Analytics</span>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginLeft: '0.25rem' }}>— {rangeLabel}</span>
-            </div>
-            {/* Date mode tabs */}
-            <div style={{ display: 'flex', gap: '0.35rem' }}>
-              {[['today', 'Today'], ['month', 'This Month'], ['custom', 'Custom']].map(([m, label]) => (
-                <button
-                  key={m}
-                  onClick={() => setDateMode(m)}
-                  style={{
-                    padding: '0.25rem 0.6rem',
-                    fontSize: '0.72rem',
-                    borderRadius: '4px',
-                    border: '1px solid var(--border)',
-                    background: dateMode === m ? 'var(--brand-blue)' : 'var(--surface-2)',
-                    color: dateMode === m ? '#fff' : 'var(--text-2)',
-                    cursor: 'pointer',
-                    fontWeight: dateMode === m ? 700 : 400,
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Custom date range picker */}
-          {dateMode === 'custom' && (
-            <div style={{ padding: '0.6rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Calendar size={13} style={{ color: 'var(--text-3)' }} />
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>From</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  max={customTo}
-                  onChange={e => setCustomFrom(e.target.value)}
-                  style={{ fontSize: '0.78rem', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)' }}
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>To</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  min={customFrom}
-                  max={todayStr()}
-                  onChange={e => setCustomTo(e.target.value)}
-                  style={{ fontSize: '0.78rem', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)' }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Overall summary row */}
-          <div style={{ padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ ...summaryCardStyle, borderLeft: '3px solid var(--brand-blue)' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>All Sites — Sales</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>{totalCount}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>coupons sold</div>
-            </div>
-            <div style={{ ...summaryCardStyle, borderLeft: '3px solid var(--green)' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>All Sites — Revenue</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--green)' }}>{totalRevenue.toLocaleString()} AED</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>combined revenue</div>
-            </div>
-            <div style={{ ...summaryCardStyle, borderLeft: '3px solid #f59e0b' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Active Sites</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>{activeSites} / {visibleSiteIds.length}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>had sales this period</div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Individual site cards ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-          {siteStats
-            .sort((a, b) => b.revenue - a.revenue)
-            .map(({ siteId, site, count, revenue, profileMap, sellerMap }) => {
-              const profileEntries = Object.entries(profileMap).sort((a, b) => b[1] - a[1]);
-              const sellerEntries  = Object.entries(sellerMap).sort((a, b) => b[1] - a[1]);
-              const hasData = count > 0;
-
-              return (
-                <div key={siteId} className="ui-card" style={{ marginBottom: 0, opacity: hasData ? 1 : 0.55 }}>
-                  {/* Site header */}
-                  <div className="ui-card-header" style={{ background: hasData ? 'var(--surface-2)' : 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>{site?.name || siteId}</span>
-                      {site?.location && (
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>· {site.location}</span>
-                      )}
-                    </div>
-                    <span className={`pill-badge ${hasData ? 'badge-success' : 'badge-neutral'}`} style={{ fontSize: '0.68rem' }}>
-                      {hasData ? `${count} sold` : 'No sales'}
-                    </span>
-                  </div>
-
-                  <div style={{ padding: '0.9rem 1rem' }}>
-                    {/* Revenue + count row */}
-                    <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.9rem' }}>
-                      <div style={{ flex: 1, background: 'var(--surface-2)', borderRadius: '6px', padding: '0.6rem 0.75rem' }}>
-                        <div style={{ fontSize: '0.63rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Coupons Sold</div>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text)' }}>{count}</div>
-                      </div>
-                      <div style={{ flex: 1, background: 'var(--surface-2)', borderRadius: '6px', padding: '0.6rem 0.75rem' }}>
-                        <div style={{ fontSize: '0.63rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Revenue</div>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: hasData ? 'var(--green)' : 'var(--text-3)' }}>
-                          {revenue > 0 ? `${revenue.toLocaleString()} AED` : '—'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {hasData && (
-                      <>
-                        {/* Profiles breakdown */}
-                        {profileEntries.length > 0 && (
-                          <div style={{ marginBottom: '0.75rem' }}>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.35rem' }}>Profiles Sold</div>
-                            <div className="data-table-container" style={{ marginTop: 0 }}>
-                              <table className="data-table" style={{ fontSize: '0.78rem' }}>
-                                <thead>
-                                  <tr>
-                                    <th>Profile</th>
-                                    <th>Qty</th>
-                                    <th>Revenue</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {profileEntries.map(([pid, cnt]) => {
-                                    const prof = db.couponProfiles.find(p => p.id === pid);
-                                    const price = db.sitePrices?.find(sp => sp.siteId === siteId && sp.profileId === pid)?.salePrice
-                                      ?? prof?.salePrice ?? 0;
-                                    return (
-                                      <tr key={pid}>
-                                        <td style={{ fontWeight: 600 }}>{prof?.name || pid}</td>
-                                        <td><span className="pill-badge badge-info">{cnt}</span></td>
-                                        <td style={{ color: 'var(--green)', fontWeight: 600 }}>{(price * cnt).toLocaleString()} AED</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Seller breakdown */}
-                        {sellerEntries.length > 0 && (role === 'Admin' || role === 'Owner' || role === 'Manager') && (
-                          <div>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.35rem' }}>By Staff</div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                              {sellerEntries.map(([uid, cnt]) => {
-                                const user = db.users.find(u => u.id === uid);
-                                return (
-                                  <span key={uid} style={{
-                                    padding: '0.18rem 0.55rem',
-                                    borderRadius: '20px',
-                                    fontSize: '0.7rem',
-                                    background: 'var(--surface-2)',
-                                    border: '1px solid var(--border)',
-                                    color: 'var(--text-2)',
-                                  }}>
-                                    {user?.name || uid} <span style={{ fontWeight: 700, color: 'var(--brand-blue)' }}>×{cnt}</span>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      </>
-    );
-  };
+  // ── Analytics rendered via shared SalesAnalyticsPanel component ─────────────
 
   // ── Sold-coupon table (shared between seller and log-only views) ───────────
   const renderSalesTable = (title, subtitle) => (
@@ -769,7 +510,7 @@ export const Sales = () => {
             <p className="page-subtitle">{subtitles[role] || ''}</p>
           </div>
         </div>
-        {renderAnalyticsPanel()}
+        {showAnalytics && <SalesAnalyticsPanel pendingSale={pendingSale} showTransactions={false} />}
         {!['Manager', 'Owner'].includes(role) && renderSalesTable(titles[role] || 'Sales', subtitles[role] || '')}
       </>
     );
