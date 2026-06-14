@@ -51,6 +51,13 @@ export const Sites = () => {
     }
   };
 
+  // Determine which sites to display based on role
+  const visibleSites = currentUser.role === 'Owner'
+    ? db.sites.filter(site =>
+        db.userSites.some(us => us.userId === currentUser.id && us.siteId === site.id)
+      )
+    : db.sites;
+
   // Group user assignments by site
   const getAssignedUsersBySite = (siteId) => {
     const userAssignments = db.userSites.filter(us => us.siteId === siteId);
@@ -144,7 +151,7 @@ export const Sites = () => {
                   onChange={(e) => setTargetSiteId(e.target.value)}
                 >
                   <option value="">-- Choose Site --</option>
-                  {db.sites.map(s => (
+                  {visibleSites.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -163,7 +170,7 @@ export const Sites = () => {
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text)' }}>Active Site Tenancies</h2>
       
       <div className="layout-grid-columns-2">
-        {db.sites.map(site => {
+        {visibleSites.map(site => {
           const assignments = getAssignedUsersBySite(site.id);
           return (
             <div key={site.id} className="ui-card">
@@ -222,6 +229,25 @@ export const Sites = () => {
                 <div className="ui-section-divider" style={{ margin: '0.5rem 0' }} />
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Owners</div>
+                    {assignments.Owner.length > 0 ? (
+                      assignments.Owner.map((u) => (
+                        <div key={u.id} className="flex-align-items-center flex-justify-space-between" style={{ fontSize: '0.8rem', color: 'var(--text)', marginBottom: '0.25rem' }}>
+                          <span>{u.name}</span>
+                          {currentUser.role === 'Admin' && (
+                            <button
+                              onClick={() => unlinkUserFromSite(u.id, site.id)}
+                              style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '0 4px', fontSize: '0.75rem', fontWeight: 700 }}
+                              title={`Unlink ${u.name}`}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    ) : <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontStyle: 'italic' }}>None assigned</div>}
+                  </div>
                   <div>
                     <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Site Managers</div>
                     {assignments.Manager.length > 0 ? (

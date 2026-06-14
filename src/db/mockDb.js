@@ -210,31 +210,41 @@ export const deleteCoupon = async (couponId, currentUserId) => {
 };
 
 export const sellCoupon = async (siteId, profileId, soldByUserId, customerName, customerPhone, remarks) => {
-  // FIX 1: Backend duplicate-prevention — re-check availability right before writing
-  // This catches race conditions where the same coupon was picked by two near-simultaneous requests
+  // Step 1: Find an available coupon
   const { data: coupons } = await supabase.from('coupons').select('*').eq('site_id', siteId).eq('profile_id', profileId).eq('status', 'Available').limit(1);
   if (!coupons || coupons.length === 0) throw new Error('No coupons available for this profile at this site');
   const coupon = coupons[0];
-  // Atomic update: only update if still 'Available' — if another request already sold it, rowCount = 0
-  const { data: updated, error: updateError } = await supabase
-    .from('coupons')
-    .update({ status: 'Sold', sold_by_user_id: soldByUserId, customer_name: customerName || '', customer_phone: customerPhone || '', sold_at: new Date().toISOString() })
-    .eq('id', coupon.id)
-    .eq('status', 'Available')  // Only update if STILL available — prevents duplicate
-    .select();
+
+  // Step 2: Atomic status update + fetch both wallets in parallel
+  const walletId = 'w-' + soldByUserId + '-sales';
+  const [{ data: updated, error: updateError }, { data: ew }, { data: sw }] = await Promise.all([
+    supabase.from('coupons')
+      .update({ status: 'Sold', sold_by_user_id: soldByUserId, customer_name: customerName || '', customer_phone: customerPhone || '', sold_at: new Date().toISOString() })
+      .eq('id', coupon.id)
+      .eq('status', 'Available')
+      .select(),
+    supabase.from('wallets').select('id, balance').eq('id', walletId).single(),
+    supabase.from('wallets').select('balance').eq('id', 'w-system').single(),
+  ]);
   if (updateError) throw new Error(updateError.message);
   if (!updated || updated.length === 0) throw new Error('Coupon was already sold — please try again');
   const soldAt = updated[0].sold_at;
-  await supabase.from('coupon_history').insert({ coupon_id: coupon.id, action: 'SOLD', user_id: soldByUserId, details: 'Sold to ' + (customerName || 'Walk-in') + ' for ' + coupon.sale_price + ' AED. ' + (remarks || '') });
-  const walletId = 'w-' + soldByUserId + '-sales';
-  const { data: ew } = await supabase.from('wallets').select('id, balance').eq('id', walletId).single();
-  if (ew) { await supabase.from('wallets').update({ balance: Number(ew.balance) + Number(coupon.sale_price) }).eq('id', walletId); }
-  else { await supabase.from('wallets').insert({ id: walletId, owner_id: soldByUserId, owner_type: 'USER_SALES', balance: coupon.sale_price }); }
-  const { data: sw } = await supabase.from('wallets').select('balance').eq('id', 'w-system').single();
-  if (sw) await supabase.from('wallets').update({ balance: Number(sw.balance) - Number(coupon.sale_price) }).eq('id', 'w-system');
+
+  // Step 3: Update wallets + insert history/transaction/log all in parallel
   const txId = txid();
-  await supabase.from('transactions').insert({ id: txId, from_wallet_id: 'w-system', to_wallet_id: walletId, amount: coupon.sale_price, type: 'SALE', timestamp: soldAt, remarks: 'Coupon sold: ' + coupon.code, created_by_user_id: soldByUserId });
-  await logAction(soldByUserId, 'COUPON_SALE', 'Sold coupon ' + coupon.code + ' for ' + coupon.sale_price + ' AED. Customer: ' + (customerName || 'None'));
+  const newUserBalance = ew ? Number(ew.balance) + Number(coupon.sale_price) : Number(coupon.sale_price);
+  await Promise.all([
+    ew
+      ? supabase.from('wallets').update({ balance: newUserBalance }).eq('id', walletId)
+      : supabase.from('wallets').insert({ id: walletId, owner_id: soldByUserId, owner_type: 'USER_SALES', balance: coupon.sale_price }),
+    sw
+      ? supabase.from('wallets').update({ balance: Number(sw.balance) - Number(coupon.sale_price) }).eq('id', 'w-system')
+      : Promise.resolve(),
+    supabase.from('coupon_history').insert({ coupon_id: coupon.id, action: 'SOLD', user_id: soldByUserId, details: 'Sold to ' + (customerName || 'Walk-in') + ' for ' + coupon.sale_price + ' AED. ' + (remarks || '') }),
+    supabase.from('transactions').insert({ id: txId, from_wallet_id: 'w-system', to_wallet_id: walletId, amount: coupon.sale_price, type: 'SALE', timestamp: soldAt, remarks: 'Coupon sold: ' + coupon.code, created_by_user_id: soldByUserId }),
+    logAction(soldByUserId, 'COUPON_SALE', 'Sold coupon ' + coupon.code + ' for ' + coupon.sale_price + ' AED. Customer: ' + (customerName || 'None')),
+  ]);
+
   return { success: true, transactionId: txId, couponCode: coupon.code };
 };
 

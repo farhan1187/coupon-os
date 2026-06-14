@@ -298,7 +298,8 @@ export const AppProvider = ({ children }) => {
     if (!currentUser) return;
     try {
       const result = await mockDb.sellCoupon(siteId, profileId, currentUser.id, customerName, customerPhone, remarks);
-      await refreshDbState();
+      // Refresh in background — UI uses optimistic pendingSale so user sees result immediately
+      refreshDbState();
       showToast('Coupon sold successfully!');
       return result;
     } catch (e) { showToast(`Error: ${e.message}`); throw e; }
