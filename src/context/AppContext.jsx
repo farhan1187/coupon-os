@@ -11,7 +11,7 @@ const EMPTY_DB = {
 };
 
 // Roles that see all sites (no site-locking)
-const GLOBAL_ROLES = ['Admin', 'Accountant', 'Owner', 'Manager'];
+const GLOBAL_ROLES = ['Admin'];
 
 export const AppProvider = ({ children }) => {
   const [dbState, setDbState]           = useState(EMPTY_DB);

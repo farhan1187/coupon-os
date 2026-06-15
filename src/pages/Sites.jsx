@@ -52,11 +52,11 @@ export const Sites = () => {
   };
 
   // Determine which sites to display based on role
-  const visibleSites = currentUser.role === 'Owner'
-    ? db.sites.filter(site =>
+  const visibleSites = currentUser.role === 'Admin'
+    ? db.sites
+    : db.sites.filter(site =>
         db.userSites.some(us => us.userId === currentUser.id && us.siteId === site.id)
-      )
-    : db.sites;
+      );
 
   // Group user assignments by site
   const getAssignedUsersBySite = (siteId) => {
