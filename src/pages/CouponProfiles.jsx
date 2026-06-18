@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Layers, Plus, Calendar, Trash2, Building2, MapPin } from 'lucide-react';
 
+const RESET_PASSWORD = '9495471187';
+
 export const CouponProfiles = () => {
   const { db, addCouponProfile, deleteCouponProfile, showToast } = useApp();
 
@@ -12,6 +14,9 @@ export const CouponProfiles = () => {
   const [costPrice, setCostPrice] = useState('');
   const [description, setDescription] = useState('');
   const [confirmDeleteProfileId, setConfirmDeleteProfileId] = useState(null);
+  const [deleteProfilePassword, setDeleteProfilePassword] = useState('');
+  const [deleteProfileError, setDeleteProfileError] = useState('');
+  const [deletingProfile, setDeletingProfile] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -30,6 +35,23 @@ export const CouponProfiles = () => {
     setName(''); setValidityDays(30); setPrice(''); setSalePrice(''); setCostPrice(''); setDescription('');
   };
 
+  const handleConfirmDeleteProfile = async () => {
+    if (deleteProfilePassword !== RESET_PASSWORD) {
+      setDeleteProfileError('Incorrect password. Please try again.');
+      return;
+    }
+    setDeletingProfile(true);
+    try {
+      await deleteCouponProfile(confirmDeleteProfileId);
+      setConfirmDeleteProfileId(null);
+      setDeleteProfilePassword('');
+    } catch (e) {
+      setDeleteProfileError('Delete failed: ' + e.message);
+    } finally {
+      setDeletingProfile(false);
+    }
+  };
+
   // Build profile card component
   const ProfileCard = ({ p, assignedSiteNames }) => (
     <div className="ui-card" style={{ marginBottom: 0 }}>
@@ -43,7 +65,11 @@ export const CouponProfiles = () => {
             {assignedSiteNames.length > 0 ? 'Active' : 'Unassigned'}
           </span>
           <button
-            onClick={() => setConfirmDeleteProfileId(p.id)}
+            onClick={() => {
+              setConfirmDeleteProfileId(p.id);
+              setDeleteProfilePassword('');
+              setDeleteProfileError('');
+            }}
             style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px', display: 'flex', alignItems: 'center' }}
             title="Delete Profile"
           >
@@ -228,15 +254,31 @@ export const CouponProfiles = () => {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-2)' }}>
                   Are you sure you want to delete the profile <strong style={{ color: 'var(--text)' }}>{profile?.name}</strong>? Coupons linked to this profile will lose their profile reference. This action cannot be undone.
                 </p>
+                <div className="form-input-wrapper" style={{ marginTop: '1rem' }}>
+                  <label className="form-field-label">Admin Password</label>
+                  <input
+                    type="password"
+                    className="text-input-field"
+                    placeholder="Enter password"
+                    value={deleteProfilePassword}
+                    onChange={(e) => { setDeleteProfilePassword(e.target.value); setDeleteProfileError(''); }}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDeleteProfile(); }}
+                  />
+                  {deleteProfileError && (
+                    <div style={{ color: 'var(--red)', fontSize: '0.78rem', marginTop: '0.4rem' }}>{deleteProfileError}</div>
+                  )}
+                </div>
               </div>
               <div className="app-modal-footer">
-                <button className="action-btn btn-outlined" onClick={() => setConfirmDeleteProfileId(null)}>Cancel</button>
+                <button className="action-btn btn-outlined" onClick={() => setConfirmDeleteProfileId(null)} disabled={deletingProfile}>Cancel</button>
                 <button
                   className="action-btn"
                   style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
-                  onClick={async () => { await deleteCouponProfile(confirmDeleteProfileId); setConfirmDeleteProfileId(null); }}
+                  onClick={handleConfirmDeleteProfile}
+                  disabled={deletingProfile}
                 >
-                  <Trash2 size={13} /> Delete Profile
+                  <Trash2 size={13} /> {deletingProfile ? 'Deleting...' : 'Delete Profile'}
                 </button>
               </div>
             </div>

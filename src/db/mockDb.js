@@ -107,8 +107,52 @@ export const updateSiteSubscription = async (siteId, expiryIso, currentUserId) =
 
 export const deleteSite = async (siteId, currentUserId) => {
   const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).single();
+
+  // Delete all child records that reference this site (in dependency order)
+  // 1. coupon_history rows for coupons belonging to this site
+  const { data: siteCoupons } = await supabase.from('coupons').select('id').eq('site_id', siteId);
+  if (siteCoupons && siteCoupons.length > 0) {
+    const couponIds = siteCoupons.map(c => c.id);
+    const { error: chErr } = await supabase.from('coupon_history').delete().in('coupon_id', couponIds);
+    if (chErr) throw new Error(chErr.message);
+  }
+
+  // 2. coupons
+  const { error: couponsErr } = await supabase.from('coupons').delete().eq('site_id', siteId);
+  if (couponsErr) throw new Error(couponsErr.message);
+
+  // 3. wallets (and their transactions)
+  const { data: siteWallets } = await supabase.from('wallets').select('id').eq('site_id', siteId);
+  if (siteWallets && siteWallets.length > 0) {
+    const walletIds = siteWallets.map(w => w.id);
+    const { error: txErr1 } = await supabase.from('transactions').delete().in('from_wallet_id', walletIds);
+    if (txErr1) throw new Error(txErr1.message);
+    const { error: txErr2 } = await supabase.from('transactions').delete().in('to_wallet_id', walletIds);
+    if (txErr2) throw new Error(txErr2.message);
+  }
+  const { error: walletsErr } = await supabase.from('wallets').delete().eq('site_id', siteId);
+  if (walletsErr) throw new Error(walletsErr.message);
+
+  // 4. transactions that reference this site directly
+  const { error: txSiteErr } = await supabase.from('transactions').delete().eq('site_id', siteId);
+  if (txSiteErr) throw new Error(txSiteErr.message);
+
+  // 5. cash_collections
+  const { error: ccErr } = await supabase.from('cash_collections').delete().eq('site_id', siteId);
+  if (ccErr) throw new Error(ccErr.message);
+
+  // 6. site_prices
+  const { error: spErr } = await supabase.from('site_prices').delete().eq('site_id', siteId);
+  if (spErr) throw new Error(spErr.message);
+
+  // 7. user_sites
+  const { error: usErr } = await supabase.from('user_sites').delete().eq('site_id', siteId);
+  if (usErr) throw new Error(usErr.message);
+
+  // 8. Finally delete the site itself
   const { error } = await supabase.from('sites').delete().eq('id', siteId);
   if (error) throw new Error(error.message);
+
   await logAction(currentUserId, 'SITE_DELETION', 'Deleted site: ' + site?.name);
 };
 

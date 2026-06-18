@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Building2, Plus, MapPin, Users, CheckCircle2, UserPlus, Trash2, Layers, MessageSquare, CalendarClock, RotateCcw, Lock } from 'lucide-react';
 
+const RESET_PASSWORD = '9495471187';
+
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in LOCAL time
 const toDatetimeLocalValue = (iso) => {
   if (!iso) return '';
@@ -15,6 +17,9 @@ export const Sites = () => {
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteLoc, setNewSiteLoc] = useState('');
   const [confirmDeleteSiteId, setConfirmDeleteSiteId] = useState(null);
+  const [deleteSitePassword, setDeleteSitePassword] = useState('');
+  const [deleteSiteError, setDeleteSiteError] = useState('');
+  const [deletingSite, setDeletingSite] = useState(false);
   const [linking, setLinking] = useState(false);
 
   // Per-site uncontrolled refs for the subscription expiry datetime input
@@ -33,6 +38,23 @@ export const Sites = () => {
     addSite(newSiteName, newSiteLoc);
     setNewSiteName('');
     setNewSiteLoc('');
+  };
+
+  const handleConfirmDeleteSite = async () => {
+    if (deleteSitePassword !== RESET_PASSWORD) {
+      setDeleteSiteError('Incorrect password. Please try again.');
+      return;
+    }
+    setDeletingSite(true);
+    try {
+      await deleteSite(confirmDeleteSiteId);
+      setConfirmDeleteSiteId(null);
+      setDeleteSitePassword('');
+    } catch (e) {
+      setDeleteSiteError('Delete failed: ' + e.message);
+    } finally {
+      setDeletingSite(false);
+    }
   };
 
   const handleAssignUser = async (e) => {
@@ -219,7 +241,11 @@ export const Sites = () => {
                   )}
                   {currentUser.role === 'Admin' && (
                     <button
-                      onClick={() => setConfirmDeleteSiteId(site.id)}
+                      onClick={() => {
+                        setConfirmDeleteSiteId(site.id);
+                        setDeleteSitePassword('');
+                        setDeleteSiteError('');
+                      }}
                       style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px', display: 'flex', alignItems: 'center' }}
                       title="Delete Site"
                     >
@@ -540,15 +566,31 @@ export const Sites = () => {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-2)' }}>
                   Are you sure you want to delete <strong style={{ color: 'var(--text)' }}>{site?.name}</strong>? This will remove the site and all associated data. This action cannot be undone.
                 </p>
+                <div className="form-input-wrapper" style={{ marginTop: '1rem' }}>
+                  <label className="form-field-label">Admin Password</label>
+                  <input
+                    type="password"
+                    className="text-input-field"
+                    placeholder="Enter password"
+                    value={deleteSitePassword}
+                    onChange={(e) => { setDeleteSitePassword(e.target.value); setDeleteSiteError(''); }}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDeleteSite(); }}
+                  />
+                  {deleteSiteError && (
+                    <div style={{ color: 'var(--red)', fontSize: '0.78rem', marginTop: '0.4rem' }}>{deleteSiteError}</div>
+                  )}
+                </div>
               </div>
               <div className="app-modal-footer">
-                <button className="action-btn btn-outlined" onClick={() => setConfirmDeleteSiteId(null)}>Cancel</button>
+                <button className="action-btn btn-outlined" onClick={() => setConfirmDeleteSiteId(null)} disabled={deletingSite}>Cancel</button>
                 <button
                   className="action-btn"
                   style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
-                  onClick={async () => { await deleteSite(confirmDeleteSiteId); setConfirmDeleteSiteId(null); }}
+                  onClick={handleConfirmDeleteSite}
+                  disabled={deletingSite}
                 >
-                  <Trash2 size={13} /> Delete Site
+                  <Trash2 size={13} /> {deletingSite ? 'Deleting...' : 'Delete Site'}
                 </button>
               </div>
             </div>

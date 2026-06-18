@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Users as UsersIcon, Plus, ShieldCheck, Key, MapPin, Trash2 } from 'lucide-react';
 
+const RESET_PASSWORD = '9495471187';
+
 export const Users = () => {
   const { db, addUser, deleteUser, showToast } = useApp();
 
@@ -10,6 +12,11 @@ export const Users = () => {
   const [role, setRole] = useState('Staff');
   const [password, setPassword] = useState('');
   const [selectedSites, setSelectedSites] = useState([]);
+
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null);
+  const [deleteUserPassword, setDeleteUserPassword] = useState('');
+  const [deleteUserError, setDeleteUserError] = useState('');
+  const [deletingUser, setDeletingUser] = useState(false);
 
   const handleSiteCheckbox = (siteId) => {
     if (selectedSites.includes(siteId)) {
@@ -46,6 +53,23 @@ export const Users = () => {
 
   const handleResetPassword = (userId) => {
     showToast(`Password for user ${userId} reset to default: "ChangeMe2026!"`);
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (deleteUserPassword !== RESET_PASSWORD) {
+      setDeleteUserError('Incorrect password. Please try again.');
+      return;
+    }
+    setDeletingUser(true);
+    try {
+      await deleteUser(confirmDeleteUserId);
+      setConfirmDeleteUserId(null);
+      setDeleteUserPassword('');
+    } catch (e) {
+      setDeleteUserError('Delete failed: ' + e.message);
+    } finally {
+      setDeletingUser(false);
+    }
   };
 
   return (
@@ -200,9 +224,9 @@ export const Users = () => {
                             <button 
                               className="action-btn btn-danger btn-sm"
                               onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete user ${u.name}?`)) {
-                                  deleteUser(u.id);
-                                }
+                                setConfirmDeleteUserId(u.id);
+                                setDeleteUserPassword('');
+                                setDeleteUserError('');
                               }}
                               title="Delete user account"
                               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.35rem' }}
@@ -221,6 +245,52 @@ export const Users = () => {
         </div>
 
       </div>
+
+      {/* Confirm Delete User Modal */}
+      {confirmDeleteUserId && (() => {
+        const user = db.users.find(u => u.id === confirmDeleteUserId);
+        return (
+          <div className="app-modal-backdrop modal-open-state">
+            <div className="app-modal-window" style={{ maxWidth: '400px' }}>
+              <div className="app-modal-header">
+                <span className="app-modal-title">Delete User</span>
+                <button className="app-modal-close-btn" onClick={() => setConfirmDeleteUserId(null)}>×</button>
+              </div>
+              <div className="app-modal-body">
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-2)' }}>
+                  Are you sure you want to delete <strong style={{ color: 'var(--text)' }}>{user?.name}</strong>? This will permanently remove the user account. This action cannot be undone.
+                </p>
+                <div className="form-input-wrapper" style={{ marginTop: '1rem' }}>
+                  <label className="form-field-label">Admin Password</label>
+                  <input
+                    type="password"
+                    className="text-input-field"
+                    placeholder="Enter password"
+                    value={deleteUserPassword}
+                    onChange={(e) => { setDeleteUserPassword(e.target.value); setDeleteUserError(''); }}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDeleteUser(); }}
+                  />
+                  {deleteUserError && (
+                    <div style={{ color: 'var(--red)', fontSize: '0.78rem', marginTop: '0.4rem' }}>{deleteUserError}</div>
+                  )}
+                </div>
+              </div>
+              <div className="app-modal-footer">
+                <button className="action-btn btn-outlined" onClick={() => setConfirmDeleteUserId(null)} disabled={deletingUser}>Cancel</button>
+                <button
+                  className="action-btn"
+                  style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
+                  onClick={handleConfirmDeleteUser}
+                  disabled={deletingUser}
+                >
+                  <Trash2 size={13} /> {deletingUser ? 'Deleting...' : 'Delete User'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
