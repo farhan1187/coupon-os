@@ -121,7 +121,7 @@ export const SalesLog = () => {
   }, [db, visibleSellerIds]);
 
   const showRevenue  = role !== 'Staff' && role !== 'Super Staff';
-  const canExportCSV = role === 'Manager' || role === 'Owner';
+  const canExportCSV = role === 'Manager' || role === 'Owner' || role === 'Super Owner';
   const hasActiveFilters = filterSiteId !== 'all' || filterProfile !== 'all' ||
     filterSeller !== 'all' || dateFrom || dateTo || search.trim();
 

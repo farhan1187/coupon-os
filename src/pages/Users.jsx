@@ -125,6 +125,7 @@ export const Users = () => {
                   >
                     <option value="Admin">Admin</option>
                     <option value="Owner">Owner</option>
+                    <option value="Super Owner">Super Owner</option>
                     <option value="Manager">Manager</option>
                     <option value="Super Staff">Super Staff</option>
                     <option value="Staff">Staff</option>
@@ -202,7 +203,7 @@ export const Users = () => {
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>@{u.username}</div>
                         </td>
                         <td>
-                          <span className={`pill-badge badge-${u.role === 'Admin' ? 'danger' : (u.role === 'Accountant' ? 'purple' : 'info')}`}>
+                          <span className={`pill-badge badge-${u.role === 'Admin' ? 'danger' : (u.role === 'Accountant' ? 'purple' : (u.role === 'Super Owner' ? 'royal' : 'info'))}`}>
                             {u.role}
                           </span>
                         </td>

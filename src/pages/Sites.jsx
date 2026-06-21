@@ -118,6 +118,7 @@ export const Sites = () => {
     // Group by role
     const grouped = {
       Owner: [],
+      'Super Owner': [],
       Manager: [],
       'Super Staff': [],
       Staff: [],
@@ -347,11 +348,30 @@ export const Sites = () => {
 
                 <div className="ui-section-divider" style={{ margin: '0.5rem 0' }} />
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
                   <div>
                     <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Owners</div>
                     {assignments.Owner.length > 0 ? (
                       assignments.Owner.map((u) => (
+                        <div key={u.id} className="flex-align-items-center flex-justify-space-between" style={{ fontSize: '0.8rem', color: 'var(--text)', marginBottom: '0.25rem' }}>
+                          <span>{u.name}</span>
+                          {currentUser.role === 'Admin' && (
+                            <button
+                              onClick={() => unlinkUserFromSite(u.id, site.id)}
+                              style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '0 4px', fontSize: '0.75rem', fontWeight: 700 }}
+                              title={`Unlink ${u.name}`}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    ) : <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontStyle: 'italic' }}>None assigned</div>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Super Owners</div>
+                    {assignments['Super Owner'].length > 0 ? (
+                      assignments['Super Owner'].map((u) => (
                         <div key={u.id} className="flex-align-items-center flex-justify-space-between" style={{ fontSize: '0.8rem', color: 'var(--text)', marginBottom: '0.25rem' }}>
                           <span>{u.name}</span>
                           {currentUser.role === 'Admin' && (

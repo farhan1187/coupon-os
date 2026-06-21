@@ -15,9 +15,12 @@ export const CashInHand = () => {
   if (!currentUser) return null;
   const role = currentUser.role;
 
-  // Visible site IDs for this user
+  // Visible site IDs for this user.
+  // Rule: ONLY Admin sees all sites globally.
+  // Every other role — including Accountant, Owner, Manager, Super Staff —
+  // is strictly limited to the sites they are assigned to in db.userSites.
   const visibleSiteIds = useMemo(() => {
-    if (role === 'Admin' || role === 'Owner' || role === 'Accountant') {
+    if (role === 'Admin') {
       return db.sites.map(s => s.id);
     }
     return db.userSites
@@ -36,36 +39,51 @@ export const CashInHand = () => {
   }, [role]);
 
   // Build the list: one entry per user who has a wallet with balance > 0
+  // NOTE: User wallet rows (w-{id}-sales / w-{id}-collection) never carry a siteId —
+  // site membership lives in db.userSites. We derive it from there.
   const entries = useMemo(() => {
     const map = {};
+
+    // Pre-build a set of user IDs that belong to at least one visible site.
+    // Only Admin bypasses this — all other roles (including Accountant) are strictly
+    // limited to users sharing at least one assigned site with them.
+    const visibleUserIds = role === 'Admin'
+      ? null // null = all users visible
+      : new Set(
+          db.userSites
+            .filter(us => visibleSiteIds.includes(us.siteId))
+            .map(us => us.userId)
+        );
 
     db.wallets.forEach(w => {
       if (!w.ownerType || !w.ownerType.startsWith('USER')) return;
       if (w.ownerId === 'SYSTEM') return;
-      if (w.siteId && !visibleSiteIds.includes(w.siteId)) return;
       if (!w.balance || w.balance <= 0) return;
 
-      // Only include users whose role is in visibleRoles
       const user = db.users.find(u => u.id === w.ownerId);
       if (!user || !visibleRoles.includes(user.role)) return;
 
+      // Site-membership filter: Admin/Accountant see all; everyone else (including
+      // Owner) only sees users assigned to at least one of their own sites.
+      if (visibleUserIds !== null && !visibleUserIds.has(w.ownerId)) return;
+
       const key = w.ownerId;
-      if (!map[key]) map[key] = { userId: w.ownerId, totalBalance: 0, wallets: [] };
+      if (!map[key]) map[key] = { userId: w.ownerId, totalBalance: 0 };
       map[key].totalBalance += w.balance;
-      map[key].wallets.push(w);
     });
 
     return Object.values(map)
       .sort((a, b) => b.totalBalance - a.totalBalance)
       .map(entry => {
         const user = db.users.find(u => u.id === entry.userId);
-        const sites = entry.wallets.map(w => {
-          const site = db.sites.find(s => s.id === w.siteId);
-          return { siteName: site?.name || w.siteId, balance: w.balance };
-        });
-        return { ...entry, user, sites };
+        // Derive real site names from db.userSites (wallet rows carry no siteId)
+        const siteNames = db.userSites
+          .filter(us => us.userId === entry.userId)
+          .map(us => db.sites.find(s => s.id === us.siteId)?.name)
+          .filter(Boolean);
+        return { ...entry, user, siteNames };
       });
-  }, [db, visibleSiteIds]);
+  }, [db, visibleSiteIds, visibleRoles, role]);
 
   const totalCashInHand = entries.reduce((s, e) => s + e.totalBalance, 0);
   const rankColors = ['#f59e0b', '#9ca3af', '#b45309']; // gold, silver, bronze
@@ -181,17 +199,9 @@ export const CashInHand = () => {
                       </span>
                     </td>
                     <td style={{ fontSize: '0.8rem', color: 'var(--text-2)' }}>
-                      {entry.sites.map((s, i) => (
-                        <span key={i}>
-                          {s.siteName}
-                          {entry.sites.length > 1 && (
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginLeft: '0.2rem' }}>
-                              ({s.balance} AED)
-                            </span>
-                          )}
-                          {i < entry.sites.length - 1 && ', '}
-                        </span>
-                      ))}
+                      {entry.siteNames.length > 0
+                        ? entry.siteNames.join(', ')
+                        : <span style={{ color: 'var(--text-3)' }}>—</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{

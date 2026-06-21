@@ -86,7 +86,7 @@ export const Navbar = ({ activePage, onToggleSidebar, onToggleNotif }) => {
               onChange={(e) => setSelectedSiteId(e.target.value)}
               style={{ paddingLeft: '2rem', height: '32px', fontSize: '0.78rem', fontWeight: 600 }}
             >
-              {(currentUser.role === 'Admin' || currentUser.role === 'Accountant' || currentUser.role === 'Owner' || currentUser.role === 'Manager') && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'Accountant' || currentUser.role === 'Owner' || currentUser.role === 'Super Owner' || currentUser.role === 'Manager') && (
                 <option value="all">All Sites</option>
               )}
               {accessibleSites.map(site => (

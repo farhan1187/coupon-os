@@ -22,7 +22,11 @@ export const Dashboard = ({ setActivePage }) => {
   if (!currentUser) return null;
 
   // ── Determine which sites this user can access ────────────────────────────
-  const GLOBAL_ROLES = ['Admin', 'Accountant', 'Owner', 'Manager'];
+  // Only Admin is truly global. Every other role (Owner, Manager, Super Owner,
+  // Accountant, Super Staff, Staff) is strictly limited to sites assigned to
+  // them via db.userSites — selecting "All Sites" in the navbar only ever
+  // aggregates THEIR OWN assigned sites, never the whole system.
+  const GLOBAL_ROLES = ['Admin'];
   const userAccessibleSiteIds = GLOBAL_ROLES.includes(currentUser.role)
     ? db.sites.map(s => s.id)
     : (db.userSites || []).filter(us => us.userId === currentUser.id).map(us => us.siteId);
@@ -411,7 +415,7 @@ export const Dashboard = ({ setActivePage }) => {
   // ═══════════════════════════════════════════
   // 2. OWNER DASHBOARD
   // ═══════════════════════════════════════════
-  const renderOwnerDashboard = () => {
+  const renderOwnerDashboard = (title = 'Owner Insights Dashboard') => {
     const ownerSiteIds = db.userSites.filter(us => us.userId === currentUser.id).map(us => us.siteId);
 
     // Respect selected site filter
@@ -435,13 +439,23 @@ export const Dashboard = ({ setActivePage }) => {
     });
     const ownerMonthRevenue = ownerMonthSales.reduce((sum, c) => sum + (Number(c.salePrice) || 0), 0);
 
+    // Pending collections — only staff assigned to this owner's sites.
+    // totalPendingCollection (line ~76) is system-wide; we recompute locally here
+    // so Owner/Super Owner never see cash from sites they aren't assigned to.
+    const ownerSiteUserIds = new Set(
+      db.userSites.filter(us => ownerSiteIds.includes(us.siteId)).map(us => us.userId)
+    );
+    const ownerPendingCollection = wallets
+      .filter(w => w.ownerType === 'USER_SALES' && ownerSiteUserIds.has(w.ownerId))
+      .reduce((sum, w) => sum + (w.balance || 0), 0);
+
     const siteLabelSuffix = selectedSiteId === 'all' ? 'all sites' : (db.sites.find(s => s.id === selectedSiteId)?.name || 'selected site');
 
     return (
       <>
         <div className="page-header-row">
           <div>
-            <h1 className="page-title-main">Owner Insights Dashboard</h1>
+            <h1 className="page-title-main">{title}</h1>
             <p className="page-subtitle">Real-time revenue, margins, stock levels, and staff balances for assigned sites</p>
           </div>
         </div>
@@ -450,7 +464,7 @@ export const Dashboard = ({ setActivePage }) => {
           <StatCard label="Total Revenue" value={`${ownerTotalRevenue} AED`} sub={`Gross sales — ${siteLabelSuffix}`} icon={DollarSign} color="var(--green)" bg="var(--green-light)" />
           <StatCard label="Today's Sales" value={`${ownerTodayRevenue} AED`} sub={`${ownerTodaySales.length} coupon${ownerTodaySales.length !== 1 ? 's' : ''} sold today`} icon={TrendingUp} color="var(--blue)" bg="var(--blue-light)" />
           <StatCard label="This Month's Sales" value={`${ownerMonthRevenue} AED`} sub={`${ownerMonthSales.length} coupon${ownerMonthSales.length !== 1 ? 's' : ''} sold this month`} icon={ArrowUpRight} color="var(--purple)" bg="var(--purple-light)" />
-          <StatCard label="Pending Collections" value={`${totalPendingCollection} AED`} sub="Cash sitting in staff wallets" icon={Wallet} color="var(--yellow)" bg="var(--yellow-light)" />
+          <StatCard label="Pending Collections" value={`${ownerPendingCollection} AED`} sub="Cash sitting in assigned-site staff wallets" icon={Wallet} color="var(--yellow)" bg="var(--yellow-light)" />
         </div>
 
         {renderProfileStockBreakdown()}
@@ -480,6 +494,13 @@ export const Dashboard = ({ setActivePage }) => {
       </>
     );
   };
+
+  // ═══════════════════════════════════════════
+  // 2b. SUPER OWNER DASHBOARD — same analytics view as Owner, scoped to
+  //     assigned sites only. Super Owner has no Collections/Wallet/Users
+  //     access elsewhere in the app, so this stays read-only sales insight.
+  // ═══════════════════════════════════════════
+  const renderSuperOwnerDashboard = () => renderOwnerDashboard('Super Owner Dashboard');
 
   // ═══════════════════════════════════════════
   // 3. MANAGER DASHBOARD
@@ -652,8 +673,47 @@ export const Dashboard = ({ setActivePage }) => {
   // 6. ACCOUNTANT DASHBOARD
   // ═══════════════════════════════════════════
   const renderAccountantDashboard = () => {
-    // Balances sitting in Super Staff collection wallets
+    // Accountant's own site-allocation wallets (already scoped to this user)
     const accWallets = wallets.filter(w => w.ownerId === currentUser.id && w.ownerType === 'ACCOUNTANT_SITE');
+
+    // Assigned site IDs for this accountant
+    const accSiteIds = db.userSites.filter(us => us.userId === currentUser.id).map(us => us.siteId);
+
+    // All user IDs assigned to any of this accountant's sites
+    const accSiteUserIds = new Set(
+      db.userSites.filter(us => accSiteIds.includes(us.siteId)).map(us => us.userId)
+    );
+
+    // Helper: users of a role who are assigned to at least one of this accountant's sites
+    const siteUsersOfRole = (role) =>
+      db.users.filter(u => u.role === role && accSiteUserIds.has(u.id));
+
+    // Staff wallets (USER_SALES) — scoped to assigned sites
+    const staffIds = new Set(siteUsersOfRole('Staff').map(u => u.id));
+    const staffWalletTotal = wallets
+      .filter(w => w.ownerType === 'USER_SALES' && staffIds.has(w.ownerId))
+      .reduce((sum, w) => sum + (w.balance || 0), 0);
+
+    // Super Staff collection wallets — scoped to assigned sites
+    const superStaffSiteIds = new Set(siteUsersOfRole('Super Staff').map(u => u.id));
+    const superStaffWalletTotal = wallets
+      .filter(w => w.ownerType === 'USER_COLLECTION' && superStaffSiteIds.has(w.ownerId))
+      .reduce((sum, w) => sum + (w.balance || 0), 0);
+
+    // Manager wallets (USER_COLLECTION) — scoped to assigned sites
+    const managerIds = new Set(siteUsersOfRole('Manager').map(u => u.id));
+    const managerWalletTotal = wallets
+      .filter(w => w.ownerType === 'USER_COLLECTION' && managerIds.has(w.ownerId))
+      .reduce((sum, w) => sum + (w.balance || 0), 0);
+
+    // Owner wallets (USER_COLLECTION) — scoped to assigned sites
+    const ownerIds = new Set(siteUsersOfRole('Owner').map(u => u.id));
+    const ownerWalletTotal = wallets
+      .filter(w => w.ownerType === 'USER_COLLECTION' && ownerIds.has(w.ownerId))
+      .reduce((sum, w) => sum + (w.balance || 0), 0);
+
+    // Ledger entries scoped to assigned sites
+    const accTransactions = db.transactions.filter(t => !t.siteId || accSiteIds.includes(t.siteId));
 
     return (
       <>
@@ -670,8 +730,11 @@ export const Dashboard = ({ setActivePage }) => {
         </div>
 
         <div className="metrics-grid">
-          <StatCard label="Pending in Super Staff Wallets" value={`${superCollectedTotal} AED`} sub="Ready for Accountant collection" icon={Wallet} color="var(--yellow)" bg="var(--yellow-light)" />
-          <StatCard label="Ledger Entries Logged" value={transactions.length} sub="All-time double entries" icon={BookOpen} color="var(--blue)" bg="var(--blue-light)" />
+          <StatCard label="Staff Wallets" value={`${staffWalletTotal} AED`} sub="Pending collection from Staff" icon={Wallet} color="var(--yellow)" bg="var(--yellow-light)" />
+          <StatCard label="Super Staff Wallets" value={`${superStaffWalletTotal} AED`} sub="Ready for Accountant collection" icon={Wallet} color="var(--orange, var(--yellow))" bg="var(--yellow-light)" />
+          <StatCard label="Manager Wallets" value={`${managerWalletTotal} AED`} sub="Held by Managers at your sites" icon={Wallet} color="var(--blue)" bg="var(--blue-light)" />
+          <StatCard label="Owner Wallets" value={`${ownerWalletTotal} AED`} sub="Held by Owners at your sites" icon={Wallet} color="var(--purple)" bg="var(--purple-light)" />
+          <StatCard label="Ledger Entries" value={accTransactions.length} sub="Transactions at your sites" icon={BookOpen} color="var(--blue)" bg="var(--blue-light)" />
         </div>
 
         <div className="ui-card">
@@ -680,7 +743,9 @@ export const Dashboard = ({ setActivePage }) => {
           </div>
           <div className="ui-card-body">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-              {accWallets.map(w => {
+              {accWallets.length === 0 ? (
+                <div style={{ color: 'var(--text-3)', fontSize: '0.85rem' }}>No site allocation wallets found for your assigned sites.</div>
+              ) : accWallets.map(w => {
                 const site = db.sites.find(s => s.id === w.siteId);
                 return (
                   <div key={w.id} style={{ padding: '1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
@@ -703,6 +768,8 @@ export const Dashboard = ({ setActivePage }) => {
       return renderAdminDashboard();
     case 'Owner':
       return renderOwnerDashboard();
+    case 'Super Owner':
+      return renderSuperOwnerDashboard();
     case 'Manager':
       return renderManagerDashboard();
     case 'Super Staff':

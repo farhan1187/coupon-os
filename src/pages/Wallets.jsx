@@ -22,6 +22,18 @@ export const Wallets = () => {
       list = list.filter(w => w.ownerId === currentUser.id);
     }
 
+    // Accountant sees only wallets belonging to users at their assigned sites.
+    // Only Admin sees all wallets globally.
+    if (currentUser.role === 'Accountant') {
+      const mySiteIds = new Set(
+        (db.userSites || []).filter(us => us.userId === currentUser.id).map(us => us.siteId)
+      );
+      const visibleUserIds = new Set(
+        (db.userSites || []).filter(us => mySiteIds.has(us.siteId)).map(us => us.userId)
+      );
+      list = list.filter(w => visibleUserIds.has(w.ownerId));
+    }
+
     if (walletSearch) {
       const q = walletSearch.toLowerCase();
       list = list.filter(w => {

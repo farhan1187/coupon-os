@@ -14,8 +14,50 @@ export const Ledger = () => {
 
   if (!currentUser) return null;
 
+  // Only Admin sees all transactions globally.
+  // Every other role (including Accountant) sees only transactions where at least
+  // one wallet involved belongs to a user assigned to one of their sites.
+  // Transactions have no site_id — we resolve ownership via db.wallets (ownerId)
+  // then check that ownerId against db.userSites.
+  const isAdmin = currentUser.role === 'Admin';
+
+  // Set of site IDs this user is assigned to
+  const mySiteIds = isAdmin
+    ? null
+    : new Set(
+        (db.userSites || [])
+          .filter(us => us.userId === currentUser.id)
+          .map(us => us.siteId)
+      );
+
+  // Set of ALL user IDs who are assigned to any of this user's sites
+  const myVisibleUserIds = isAdmin
+    ? null
+    : new Set(
+        (db.userSites || [])
+          .filter(us => mySiteIds.has(us.siteId))
+          .map(us => us.userId)
+      );
+
+  // Map walletId → ownerId using db.wallets (reliable, no string parsing)
+  const walletOwnerMap = {};
+  (db.wallets || []).forEach(w => { walletOwnerMap[w.id] = w.ownerId; });
+
+  const txBelongsToMySites = (tx) => {
+    if (myVisibleUserIds === null) return true;
+    const fromOwner = walletOwnerMap[tx.fromWalletId];
+    const toOwner   = walletOwnerMap[tx.toWalletId];
+    return (
+      (fromOwner && myVisibleUserIds.has(fromOwner)) ||
+      (toOwner   && myVisibleUserIds.has(toOwner))   ||
+      (tx.createdByUserId && myVisibleUserIds.has(tx.createdByUserId))
+    );
+  };
+
   const getFilteredTransactions = () => {
-    let list = db.transactions;
+    let list = isAdmin
+      ? db.transactions
+      : db.transactions.filter(txBelongsToMySites);
 
     if (typeFilter !== 'all') {
       list = list.filter(t => t.type === typeFilter);
